@@ -1,0 +1,20 @@
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+
+# Node.js
+node_modules/
+**/node_modules/
+npm-debug.log
+yarn-error.log
+
+# Miscellaneous
+.DS_Store
+Thumbs.db
+*.log
+target/
+out/
+
+# Exclude submodule's .git directories
+**/.git/modules/
