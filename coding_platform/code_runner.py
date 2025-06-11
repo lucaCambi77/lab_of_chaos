@@ -1,23 +1,31 @@
 import subprocess
 
+user_input = {
+    "code": """def get_even_numbers(arr):
+                return [x for x in arr if x % 2 == 0]
+""",
+    "id": 1,
+    "language": "python",
+}
+
 # Simulate database
 exercises = {
     1: {
-        "func_name": "get_even_numbers",
-        "body": """def get_even_numbers(arr):""",
-        "test_cases": {
-            1: {"input": [1, 2, 3, 4, 5, 6], "expected": [2, 4, 6]},
-            2: {"input": [1, 3, 5], "expected": []},
+        "python": {
+            "func_name": "get_even_numbers",
+            "body": """def get_even_numbers(arr):""",
+            "test_cases": {
+                1: {"input": [1, 2, 3, 4, 5, 6], "expected": [2, 4, 6]},
+                2: {"input": [1, 3, 5], "expected": []},
+            }
         }
     }
 }
 
-ex = exercises[1]
+ex = exercises[user_input["id"]][user_input["language"]]
 
 # User submitted solution as a function
-user_sol = """def get_even_numbers(arr):
-    return [x for x in arr if x % 2 == 0]
-"""
+user_sol = user_input["code"]
 
 # 1. Build the Python script to be executed inside Docker
 user_code = f"""
