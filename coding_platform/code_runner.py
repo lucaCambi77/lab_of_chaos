@@ -2,6 +2,7 @@ import subprocess
 import tempfile
 import os
 import urllib.request
+import re
 
 # Simulate database
 exercises = {
@@ -65,8 +66,6 @@ for test_id, test_data in {ex["test_cases"]}.items():
     result = {ex["func_name"]}(test_data['input'])
     expected = test_data['expected']
     assert result == expected, f"Test {{test_id}} failed: expected {{expected}}, got {{result}}"
-
-print("All tests passed!")
 """
 
 # 2. Prepare Docker command
@@ -83,13 +82,25 @@ result = subprocess.run(
     text=True
 )
 
+
+def parse_failures_python(out):
+    messages = []
+    matches = re.finditer(r"AssertionError:\s*(Test \d+)\sfailed:\s*(.+)", out)
+    for match in matches:
+        test_name, message = match.groups()
+        messages.append({"test": test_name, "message": message})
+
+    return messages
+
+
 # 4. Output the result
 print("=== OUTPUT ===")
-print(result.stdout.strip())
 
 if result.stderr:
     print("=== ERROR ===")
-    print(result.stderr.strip())
+    print(parse_failures_python(result.stderr.strip()))
+else:
+    print("All tests passed!")
 
 ## Java
 DOCKER_IMAGE = "junit_java_runner"
@@ -114,21 +125,26 @@ CMD ["java", "-jar", "libs/{JUNIT_JAR_NAME}", "--class-path=out", "--scan-class-
         f.write(dockerfile_content)
 
 
-def build_and_run_container(temp_dir):
-    subprocess.run(["docker", "build", "-t", DOCKER_IMAGE, temp_dir], check=True)
-    subprocess.run(["docker", "run", "--rm", DOCKER_IMAGE], check=True)
+def build_and_run_container(temp):
+    subprocess.run(["docker", "build", "-t", DOCKER_IMAGE, temp], check=True)
+    return subprocess.run(
+        ["docker", "run", "--rm", DOCKER_IMAGE],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True
+    ).stdout.strip()
 
 
-def download_junit(lib_dir):
-    junit_path = os.path.join(lib_dir, JUNIT_JAR_NAME)
+def download_junit(lib):
+    junit_path = os.path.join(lib, JUNIT_JAR_NAME)
     if not os.path.exists(junit_path):
         print("⬇️  Downloading JUnit...")
         urllib.request.urlretrieve(JUNIT_JAR_URL, junit_path)
     return junit_path
 
 
-def write_java_files(temp_dir):
-    src_dir = os.path.join(temp_dir, "src")
+def write_java_files(temp):
+    src_dir = os.path.join(temp, "src")
     os.makedirs(src_dir, exist_ok=True)
     for filename, code in java_files.items():
         with open(os.path.join(src_dir, filename), "w") as f:
@@ -158,6 +174,28 @@ ex = exercises[user_input["id"]][user_input["language"]]
 
 java_files = {"Solution.java": user_input["code"], **ex["test_cases"]}
 
+
+def parse_failures_java(test_output):
+    # Regex to find failure blocks
+    results = []
+    failure_blocks = re.findall(r"Failures \(\d+\):\n(.*?)(?=\n\S|$)", test_output, re.DOTALL)
+
+    for block in failure_blocks:
+        # Extract test class and method
+        test_match = re.search(r"JUnit Jupiter:([\w$]+):([\w$]+)", block)
+        test_name = f"{test_match.group(2)}" if test_match else "UnknownTest"
+
+        # Extract failure message
+        expected_actual_match = re.search(r"expected:\s*<(.+?)>\s*but was:\s*<(.+?)>", block)
+        if expected_actual_match:
+            expected = expected_actual_match.group(1)
+            actual = expected_actual_match.group(2)
+            message = f"expected <{expected}> but was <{actual}>"
+            results.append({"test": test_name, "message": message})
+
+    return results
+
+
 with tempfile.TemporaryDirectory() as temp_dir:
     print(f"📂 Using temp dir: {temp_dir}")
     # Prepare dirs
@@ -166,4 +204,10 @@ with tempfile.TemporaryDirectory() as temp_dir:
     os.makedirs(lib_dir, exist_ok=True)
     download_junit(lib_dir)
     write_dockerfile(temp_dir)
-    build_and_run_container(temp_dir)
+    output = build_and_run_container(temp_dir)
+    failures = parse_failures_java(output)
+    print("=== OUTPUT ===")
+    if failures:
+        print(failures)
+    else:
+        print("All tests passed")
